@@ -48,18 +48,23 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	defer file.Close()
 
 	// get mediatype from file's content-type header
-	mediaType := header.Header["Content-Type"][0]
+	contentTypes := header.Header["Content-Type"]
+	mediaType, _, err := mime.ParseMediaType(contentTypes[0])
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "unable to parse content type header", err)
+		return
+	}
 
-	// read image data into a byte slice
-	// data, err := io.ReadAll(file)
-	// if err != nil {
-	// 	respondWithError(w, http.StatusBadRequest, "Unable to read file", err)
-	// }
+	if mediaType != "image/jpeg" && mediaType != "image/png" {
+		respondWithError(w, http.StatusBadRequest, "file must be either jpeg or png format", err)
+		return
+	}
 
 	// get video metadata from db
 	metadata, err := cfg.db.GetVideo(videoID)
 	if err != nil {
 		respondWithError(w, http.StatusBadRequest, "Unable to fetch video metadata", err)
+		return
 	}
 
 	// check fi user id lines up
