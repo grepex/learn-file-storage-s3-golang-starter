@@ -1,11 +1,13 @@
 package main
 
 import (
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
+	"os"
+	"path/filepath"
 
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/auth"
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/database"
@@ -34,7 +36,6 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 
 	fmt.Println("uploading thumbnail for video", videoID, "by user", userID)
 
-	// TODO: implement the upload here
 	const maxMemory = 10 << 20
 
 	r.ParseMultipartForm(maxMemory)
@@ -50,10 +51,10 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	mediaType := header.Header["Content-Type"][0]
 
 	// read image data into a byte slice
-	data, err := io.ReadAll(file)
-	if err != nil {
-		respondWithError(w, http.StatusBadRequest, "Unable to read file", err)
-	}
+	// data, err := io.ReadAll(file)
+	// if err != nil {
+	// 	respondWithError(w, http.StatusBadRequest, "Unable to read file", err)
+	// }
 
 	// get video metadata from db
 	metadata, err := cfg.db.GetVideo(videoID)
@@ -76,12 +77,30 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	// videoThumbnails[metadata.ID] = tn
 
 	// update db so video record has a new thumbnail url
-	// tnURL := fmt.Sprintf("http://localhost:%s/api/thumbnails/%s", cfg.port, metadata.ID)
 
 	// create base64 encoded image
-	b64Data := base64.StdEncoding.EncodeToString(data)
+	// b64Data := base64.StdEncoding.EncodeToString(data)
+	//
+	// dataURL := fmt.Sprintf("data:%s;base64,%s", mediaType, b64Data)
 
-	dataURL := fmt.Sprintf("data:%s;base64,%s", mediaType, b64Data)
+	extensions, err := mime.ExtensionsByType(mediaType)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Unable to determine file extension", err)
+	}
+	extension := extensions[0]
+
+	fileName := fmt.Sprintf("%s.%s", metadata.ID, extension)
+	filePath := filepath.Join(cfg.assetsRoot, fileName)
+	createdFile, err := os.Create(filePath)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "error creating file for thumbnail in filesystem", err)
+	}
+
+	_, err = io.Copy(createdFile, file)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Error writing uploaded file to filesystem", err)
+	}
+	tnURL := fmt.Sprintf("http://localhost:%s/assets/%s", cfg.port, fileName)
 
 	videoParams := database.CreateVideoParams{
 		Title:       metadata.Title,
@@ -92,7 +111,7 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	video := database.Video{
 		ID:                metadata.ID,
 		CreateVideoParams: videoParams,
-		ThumbnailURL:      &dataURL,
+		ThumbnailURL:      &tnURL,
 	}
 
 	err = cfg.db.UpdateVideo(video)
