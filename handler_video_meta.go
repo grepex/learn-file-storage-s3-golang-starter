@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/auth"
@@ -82,17 +83,30 @@ func (cfg *apiConfig) handlerVideoMetaDelete(w http.ResponseWriter, r *http.Requ
 }
 
 func (cfg *apiConfig) handlerVideoGet(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("Starting handlerVideoGet")
 	videoIDString := r.PathValue("videoID")
+	fmt.Println("VideoIDString: " + videoIDString)
 	videoID, err := uuid.Parse(videoIDString)
 	if err != nil {
 		respondWithError(w, http.StatusBadRequest, "Invalid video ID", err)
 		return
 	}
+	fmt.Println("VideoID: " + videoID.String())
 
 	video, err := cfg.db.GetVideo(videoID)
 	if err != nil {
 		respondWithError(w, http.StatusNotFound, "Couldn't get video", err)
 		return
+	}
+	fmt.Println("Video object: ")
+	fmt.Println(video)
+
+	if video.VideoURL != nil {
+		video, err = cfg.dbVideoToSignedVideo(video)
+		if err != nil {
+			respondWithError(w, http.StatusBadRequest, "Unable to convert video url to signed url", err)
+			return
+		}
 	}
 
 	respondWithJSON(w, http.StatusOK, video)
@@ -116,5 +130,17 @@ func (cfg *apiConfig) handlerVideosRetrieve(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	respondWithJSON(w, http.StatusOK, videos)
+	var presignedVideos []database.Video
+	for _, video := range videos {
+		if video.VideoURL != nil {
+			video, err = cfg.dbVideoToSignedVideo(video)
+			if err != nil {
+				respondWithError(w, http.StatusBadRequest, "Unable to convert video url to signed url", err)
+				return
+			}
+		}
+		presignedVideos = append(presignedVideos, video)
+	}
+
+	respondWithJSON(w, http.StatusOK, presignedVideos)
 }

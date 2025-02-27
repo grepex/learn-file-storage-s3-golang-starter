@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -21,6 +23,14 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		respondWithError(w, http.StatusBadRequest, "Invalid ID", err)
 		return
 	}
+
+	randomBytes := make([]byte, 32)
+	_, err = rand.Read(randomBytes)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Unable to generate randomized sequence", err)
+	}
+
+	encodedString := base64.RawURLEncoding.EncodeToString(randomBytes)
 
 	token, err := auth.GetBearerToken(r.Header)
 	if err != nil {
@@ -94,7 +104,7 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	}
 	extension := extensions[0]
 
-	fileName := fmt.Sprintf("%s.%s", metadata.ID, extension)
+	fileName := fmt.Sprintf("%s.%s", encodedString, extension)
 	filePath := filepath.Join(cfg.assetsRoot, fileName)
 	createdFile, err := os.Create(filePath)
 	if err != nil {
